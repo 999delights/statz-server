@@ -8,7 +8,7 @@ import time
 import eventlet
 import logging
 eventlet.monkey_patch()
-
+import re
 
 app = Flask(__name__)
 socketio = SocketIO(app, ping_timeout=5, ping_interval=2, cors_allowed_origins="*")
@@ -61,8 +61,17 @@ if not os.path.exists(tasks_dir):
 
 # Verify if the "speed" directory exists or create it
 speed_dir = os.path.join(tasks_dir, 'speed')
-if not os.path.exists(tasks_dir):
-    os.makedirs(tasks_dir)
+if not os.path.exists(speed_dir):
+    os.makedirs(speed_dir)
+
+
+#CONFIG DIR
+config_directory_path = r'C:\Users\andre\AppData\Local\Programs\phBot Testing\Config'
+
+
+
+
+
 
 
 
@@ -209,10 +218,6 @@ def processMessages():
                         except json.JSONDecodeError:  # Handle possible JSON decoding errors
                             print(f"Error decoding JSON in {filename}")
 
-                    # Optionally, clear contents of specific files to avoid data duplication
-                    if filename.startswith('message_'):
-                        with open(file_path, 'w', encoding='utf-8') as file_to_clear:
-                            file_to_clear.write('')
 
     # After processing, update the global messages_data
     messages_data = local_messages_data
@@ -358,25 +363,41 @@ def handle_message(data):
 ###########################################
 socketio.on('fetch_STATZ')
 def handle_fetch_characters():
-    if manager_data and statz_data:
-        for key_data in manager_data.copy():
-            # Get the character name
-            name_data = key_data.split('/')[-1]
-            
-            # Get the server info from latest_data
-            server_info = manager_data[key_data]['server']
-            
-            # Append server info to name_data
-            name_data = f"{name_data}/{server_info}"
-            
-            for key_info in statz_data:
-                if name_data == key_info:
-                    manager_data[key_data].update(statz_data[key_info])
-                    
-        # Emit socket after all character data has been checked
-        socketio.emit('characters_data', manager_data)
+    global manager_data  # Although not directly modified, declared for clarity
+    global statz_data  # Same as above
+
+    # Create local copies of the global data
+    local_manager_data = manager_data
+    local_statz_data = statz_data
+    info_data = {}  # Initialize a local dictionary for the merged data
+
+    # Merge logic
+    for key_data in local_manager_data:
+        # Get the character name
+        name_data = key_data.split('/')[-1]
+
+        # Get the server info from manager data
+        server_info = local_manager_data[key_data]['server']
+
+        # Append server info to name_data to match the key format in statz_data
+        merged_key = f"{name_data}/{server_info}"
+
+        # Check if the merged key exists in statz_data
+        if merged_key in local_statz_data:
+            # If so, merge statz_data under the key into the manager data for the corresponding character
+            local_manager_data[key_data].update(local_statz_data[merged_key])
+
+            # Additionally, update or create the entry in info_data with the merged data
+            info_data[key_data] = local_manager_data[key_data]
+
+    # Check if there is any data to emit
+    if info_data:
+        # Emit the combined data via socket
+        socketio.emit('characters_data', info_data)
     else:
+        # Emit an error message if no data is available
         socketio.emit('characters_error', 'No data available yet.')
+
 ###########################################
 
 
@@ -400,12 +421,250 @@ def handle_fetch_messages():
 ###########################################
 
 
+@socketio.on('speed_cast')
+def handle_speed_cast(payload):
+    # Extract details from payload
+    character_name = payload['character']
+    server_name = payload['server']
+    checked_value = payload['checked']
+    players_list = payload['list']
+    isBard = payload['isBard']
+    main = payload['main']
+    march = payload['march']
+  
+    # Formulate the data to save
+    data_dict = { 
+        f"{character_name}/{server_name}": {  # Maintain the '/' in the key for readability
+            "checked": checked_value,
+            "list": players_list,
+            "isBard": isBard,
+            'main': main,
+            'march':march,
+     
+        }
+    }
+
+
+    # Complete file path
+    file_path = os.path.join(speed_dir, server_name, f'{character_name}.json')
+    
+    # Verify directory exists or create it (for nested character/server structures)
+    dir_path = os.path.dirname(file_path)
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+
+    # Save the data to the JSON file
+    try:
+        with open(file_path, 'w') as file:
+            json.dump(data_dict, file)
+        print(f"Data for {character_name} on {server_name} saved successfully.")
+    except Exception as e:
+        print(f"Failed to save data for {character_name} on {server_name}. Error: {e}")
+
+
+@socketio.on('new_MESSAGES')  # Create a new event 'new_MESSAGES'
+def handle_new_messages():
+    try:
+        # Specify the path to the count.json file
+        save_path = r'C:\Users\andre\AppData\Local\Programs\phBot Testing\Plugins\info\messages\count.json'
+
+        # Check if the file exists and remove it if it does
+        if os.path.exists(save_path):
+            os.remove(save_path)
+
+        # Emit a signal to indicate that the file has been removed
+        socketio.emit('count_file_removed')
+
+    except Exception as e:
+        # Handle any exceptions that may occur while removing the file
+        socketio.emit('count_file_remove_error', str(e))
+
+
+
+###########################################
+###########################################
+######### DATA FROM CONFIG FOLDER #########
+
+
+def extract_conditions_data():
+   
+
+    # Create a dictionary to store conditions data for each file
+    conditions_data = {}
+
+    # Define a regular expression pattern to match the filename pattern "server_character.json"
+    filename_pattern = re.compile(r'^(.+)_(.+)\.json$')
+
+    # Iterate over files in the config directory
+    for file_name in os.listdir(config_directory_path):
+        if file_name.endswith('.json'):
+            # Check if the filename matches the pattern
+            match = filename_pattern.match(file_name)
+            if match:
+                server = match.group(1)
+                character = match.group(2)
+
+
+
+
+
+                file_path = os.path.join(config_directory_path, file_name)
+                with open(file_path, 'r', encoding='utf-8') as json_file:
+                    try:
+                        data = json.load(json_file)
+                        conditions_data[f"{server}_{character}"] = data.get('Conditions', {})
+                    except (json.JSONDecodeError, ValueError):
+                        print(f"Error processing file {file_path}")
+          
+
+    # Save the extracted data to conditions.json in main_directory_path
+    output_file_path = os.path.join(main_directory_path, 'conditions.json')
+    with open(output_file_path, 'w', encoding='utf-8') as output_file:
+        json.dump(conditions_data, output_file, indent=4)
+
+######### DATA FROM CONFIG FOLDER #########
+###########################################
+###########################################
+
+
+
+
+
+
+
+def speed_condition():
+
+    # Define a regular expression pattern to match the filename pattern "server_character.json"
+    filename_pattern = re.compile(r'^(.+)_(.+)\.json$')
+
+
+
+        # Iterate through each server folder
+    for server_name in os.listdir(speed_dir):
+        server_path = os.path.join(speed_dir, server_name)
+        if os.path.isdir(server_path):
+            # Iterate through each character JSON file in the server directory
+            for file_name in os.listdir(server_path):
+                if file_name.endswith('.json') and not file_name.startswith('condition'):
+                    character_path = os.path.join(server_path, file_name)
+                    with open(character_path, 'r') as json_file:
+                        character_data = json.load(json_file)
+                        for key, values in character_data.items():
+                            character_name, character_server = key.split('/')
+                            
+                            checked = values.get('checked', False)
+                            item_list = values.get('list', [])
+                            march = values.get('march',"")
+                            is_bard = values.get('isBard', False)
+                            main = values.get('main', "")
+                            # Save to a new file in the same server directory
+                            export_filename = f"condition_{character_name}.json"
+                            export_path = os.path.join(server_path, export_filename)
+                            # If checked is true, is bard, and main is true
+                            if checked:
+                                if is_bard:
+                                    base_conditions = [
+                                        {"if": 10, "op": 2, "value_1": "checkrecastspeed", "value_2": ""},
+                                        {"if": 11, "op": 2, "value_1": "", "value_2": ""}
+                                    ]
+
+                                    # Initialize then_clause based on 'main'
+                                    if main == "Main":
+                                        then_clause = [
+                                            {"then": 49, "value": "ok", "value_2": ""},
+                                            {"then": 15, "value": march, "value_2": ""}
+                                        ]
+                                        # Define export_data with the appropriate configuration
+                                        export_data = {
+                                            f"{character_server}_{character_name}": [{
+                                                "Enabled": True,
+                                                "if": base_conditions,
+                                                "then": then_clause,
+                                               
+                                            }]
+                                        }
+                                    else:
+                                        for name in item_list:
+                                            base_conditions.append({"if": 1, "op": 2, "value_1": name, "value_2": ""})         #if main not in training area
+
+                                        if march == "Swing March":
+
+
+                                            then_clause =  [{"then": 49, "value": "ok", "value_2": ""},                     # ok message
+
+                                                            {"then": 17, "value": "cast_Swing", "value_2": ""}]               # cast speed if not main    SWING  
+                                        else:
+                                            then_clause =  [{"then": 49, "value": "ok", "value_2": ""},                     # ok message
+
+                                                            {"then": 17, "value": "cast_Moving", "value_2": ""}] 
+                                                          # cast speed if not main    
+                                        # Append a new configuration for the current item
+                                        export_data = {
+                                            f"{character_server}_{character_name}": [{
+                                                "Enabled": True,
+                                                "if": base_conditions,
+                                                "then": then_clause,
+                                               
+                                            }]
+                                        }
+
+                                if not is_bard:
+                                    base_conditions = [
+                                        {"if": 11, "op": 2, "value_1": "", "value_2": ""},
+                                        {"if": 19, "op": 2, "value_1": march, "value_2": ""},
+                                        {"if": 10, "op": 2, "value_1": "search_speed", "value_2": ""}
+                                    ]
+
+                                    then_clause = [{"then": 49, "value": "speeddeeps", "value_2": ""}]
+
+                                    export_data = {f"{character_server}_{character_name}": []}
+
+                                    # Generate configurations for each name in the item_list
+                                    for index, current_name in enumerate(item_list):
+                                        # Start with a fresh copy of base conditions for each item
+                                        conditions = base_conditions.copy()
+                                        
+                                        # Add condition for each previous item with "if": 1
+                                        for previous_name in item_list[:index]:
+                                            conditions.append({"if": 1, "op": 2, "value_1": previous_name, "value_2": ""})
+                                        
+                                        # Add condition for the current item with "if": 0
+                                        conditions.append({"if": 0, "op": 2, "value_1": current_name, "value_2": ""})
+
+                                        # Prepare the configuration for the current set of conditions
+                                        config = {
+                                            "Enabled": True,
+                                            "if": conditions,
+                                            "then": then_clause,
+                                        }
+                                        
+                                        # Append the configuration for the current item to export_data
+                                        export_data[f"{character_server}_{character_name}"].append(config)
+
+
+
+
+
+                                
+                                with open(export_path, 'w') as export_file:
+                                    json.dump(export_data, export_file, indent=4)
+                                print(f"Exported conditions for {character_name} in {server_name}.")
+                                
+                            elif not checked and os.path.exists(export_path):
+
+                                 
+
+                                # Remove the file if it exists and checked is False
+                                os.remove(export_path)
+                                print(f"Removed condition file for {character_name} in {server_name}, since checked is False.")
 
 def background_task():
     """Background task to send socketio messages."""
     while True:
         processData()
         processMessages()
+        speed_condition()
+        extract_conditions_data()
         handle_fetch_characters()
         handle_fetch_messages() 
         process_events(events_directory)
@@ -431,23 +690,6 @@ def disconnect_request():
 
 
 
-
-@socketio.on('new_MESSAGES')  # Create a new event 'new_MESSAGES'
-def handle_new_messages():
-    try:
-        # Specify the path to the count.json file
-        save_path = r'C:\Users\andre\AppData\Local\Programs\phBot Testing\Plugins\info\messages\count.json'
-
-        # Check if the file exists and remove it if it does
-        if os.path.exists(save_path):
-            os.remove(save_path)
-
-        # Emit a signal to indicate that the file has been removed
-        socketio.emit('count_file_removed')
-
-    except Exception as e:
-        # Handle any exceptions that may occur while removing the file
-        socketio.emit('count_file_remove_error', str(e))
 
 
 
@@ -510,31 +752,5 @@ def get_characters():
         
     else:
         return "No data available yet.", 404  
-
-
-
-# @socketio.on('speed_cast')
-# def handle_speed_cast(payload):
-    
-#     # Extract the character name and other necessary details
-#     character_name = payload['character']
-#     checked_value = payload['checked']
-#     players_list = payload['players']
-#     isBard = payload['isBard']
-#     # Formulate the dictionary to be saved
-#     data_dict = {
-       
-#             "checked": checked_value,
-#             "players": players_list,
-#             "isBard": isBard
-        
-#     }
-    
-#     # Define the file path for the JSON file
-#     file_path = os.path.join(speed_dir, f"{character_name}.json")
-    
-#     # Save the data to the JSON file
-#     with open(file_path, 'w') as file:
-#         json.dump(data_dict, file)
 
 
