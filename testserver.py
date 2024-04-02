@@ -1,73 +1,75 @@
-
-
 import os
-from threading import Thread, Event
-import tkinter as tk
-from tkinter import filedialog
-import eventlet
-eventlet.monkey_patch()
 from datetime import datetime
 from turtle import speed
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, disconnect
 import json
 import time
+import eventlet
 import logging
+eventlet.monkey_patch()
 import re
 
 app = Flask(__name__)
 socketio = SocketIO(app, ping_timeout=5, ping_interval=2, cors_allowed_origins="*")
-gui_done = Event()
-
-
-
-manager_exe_path = None
-silkroad_launcher_path = None
-# Global variable declaration
-main_directory_path = None  # Initialized as None to signify it's not yet set
-info_path = count_path = config_directory_path = ""
-statz_directory = msgs_directory = stall_directory = events_directory = ""
-messages_dir = tasks_dir = speed_dir = ""
 
 
 
 
 
-def initialize_directories():
-    global main_directory_path, info_path, count_path, config_directory_path
-    global statz_directory, msgs_directory, stall_directory, events_directory
-    global messages_dir, tasks_dir, speed_dir
 
-    if main_directory_path:
-        # Simply define the paths without creating directories or files
-        info_path = os.path.join(main_directory_path, 'Plugins', 'info')
-        count_path = os.path.join(info_path, 'messages', 'count.json')
-        config_directory_path = os.path.join(main_directory_path, 'Config')
-        statz_directory = os.path.join(info_path, 'statz')
-        msgs_directory = os.path.join(info_path, 'messages', 'msgs')
-        stall_directory = os.path.join(info_path, 'stall')
-        events_directory = os.path.join(info_path, 'events')
 
-        # Only create these directories if they don't exist
-        messages_dir = os.path.join(info_path, 'messages', 'LIVE')
-        tasks_dir = os.path.join(info_path, 'tasks')
-        speed_dir = os.path.join(tasks_dir, 'speed')
 
-        directories_to_create = [messages_dir, tasks_dir, speed_dir]
 
-        for directory in directories_to_create:
-            os.makedirs(directory, exist_ok=True)
+
+
+
+
+# Define the main directory path where the phBot plugins store their data.
+main_directory_path = r'C:\Users\andre\AppData\Local\Programs\phBot Testing\Plugins\info'
+
+count_path = r'C:\Users\andre\AppData\Local\Programs\phBot Testing\Plugins\info\messages\count.json'
+
+
+# Define paths for additional directories within the main directory to organize data more specifically.
+
+#DIRECTORIES WITH DATA FROM PLUGINS
+statz_directory = os.path.join(main_directory_path, 'statz')
+msgs_directory = os.path.join(main_directory_path, 'messages', 'msgs')
+stall_directory = os.path.join(main_directory_path, 'stall')
+events_directory = os.path.join(main_directory_path, 'events')
 
 
 # Initialize empty dictionaries to temporarily store the gathered data before sending.
 statz_data = {}
 messages_data = {}
 events_data = {}
-speed_data = {}
+manager_data = {}
 new_messages_saved = False
 
-speed_pause = False
-events_sent = False
+
+#DIRECTORIES WITH DATA FROM CLIENT
+# Verify if the "LIVE messages" directory exists or create it
+messages_dir = os.path.join(main_directory_path, 'messages/LIVE')
+if not os.path.exists(messages_dir):
+    os.makedirs(messages_dir)
+
+# Verify if the "tasks" directory exists or create it
+tasks_dir = os.path.join(main_directory_path, 'tasks')
+if not os.path.exists(tasks_dir):
+    os.makedirs(tasks_dir)
+
+# Verify if the "speed" directory exists or create it
+speed_dir = os.path.join(tasks_dir, 'speed')
+if not os.path.exists(speed_dir):
+    os.makedirs(speed_dir)
+
+
+#CONFIG DIR
+config_directory_path = r'C:\Users\andre\AppData\Local\Programs\phBot Testing\Config'
+
+
+
 
 
 
@@ -75,84 +77,68 @@ events_sent = False
 ###########################################
 ########## DATA FROM INFO FOLDER ##########
 
-
 def process_events(main_dir):    
-    global events_data, events_sent
+    global events_data
+    global events_sent
 
     events_data = {}
-    files_to_delete = []
-
-    if not events_sent:  # Skip processing if events_sent is False
-        print("Skipping event processing because events_sent is False.")
-        return
-
     for server in os.listdir(main_dir):
         server_dir = os.path.join(main_dir, server)
-        if not os.path.isdir(server_dir):
-            continue
-
-        for character in os.listdir(server_dir):
-            character_dir = os.path.join(server_dir, character)
-            if not os.path.isdir(character_dir):
-                continue
-
-            event_files = sorted(os.listdir(character_dir))
-            for file_name in event_files:
-                file_path = os.path.join(character_dir, file_name)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                except (FileNotFoundError, json.JSONDecodeError) as e:
-                    print(f"Error processing file {file_path}: {e}")
-                    continue
-
-                key = next(iter(data))
-                event_name = data[key]['event_name']
-
-                if event_name == "EVENT_CONNECTED":
-                    connected_event_processed = False
-                    for subsequent_file_name in event_files[event_files.index(file_name)+1:]:
-                        subsequent_file_path = os.path.join(character_dir, subsequent_file_name)
-                        try:
-                            with open(subsequent_file_path, 'r') as subsequent_file:
-                                subsequent_data = json.load(subsequent_file)
-                        except (FileNotFoundError, json.JSONDecodeError) as e:
-                            print(f"Error processing file {subsequent_file_path}: {e}")
+        if os.path.isdir(server_dir):
+            for character in os.listdir(server_dir):
+                character_dir = os.path.join(server_dir, character)
+                if os.path.isdir(character_dir):
+                    event_files = sorted(os.listdir(character_dir))
+                    for file_name in event_files:
+                        file_path = os.path.join(character_dir, file_name)
+                        # Check if file exists before attempting to open
+                        if not os.path.exists(file_path):
+                            print(f"File not found: {file_path}")
                             continue
-
-                        subsequent_key = next(iter(subsequent_data))
-                        if subsequent_data[subsequent_key]['event_name'] == "EVENT_DISCONNECTED":
-                            # Add EVENT_DISCONNECTED to events_data first
-                            events_data.setdefault(subsequent_key, []).append(subsequent_data[subsequent_key])
-                            # Mark both EVENT_CONNECTED and EVENT_DISCONNECTED for deletion
-                            files_to_delete.extend([file_path, subsequent_file_path])
-                            connected_event_processed = True
-                            break
-
-                    if not connected_event_processed:
-                        # If no corresponding EVENT_DISCONNECTED is found, add EVENT_CONNECTED to events_data
+                        try:
+                            with open(file_path, 'r') as f:
+                                data = json.load(f)
+                        except json.JSONDecodeError as e:
+                            print(f"Error reading file {file_path}: {e}")
+                            continue
+                        key = next(iter(data))
+                        event_name = data[key]['event_name']
+                        
+                        # Append data to the master JSON
                         events_data.setdefault(key, []).append(data[key])
-                else:
-                    # Directly add events other than "EVENT_CONNECTED" to events_data
-                    events_data.setdefault(key, []).append(data[key])
+                        
+                            # Save the extracted data to conditions.json in main_directory_path
+                        output_file_path = os.path.join(main_directory_path, 'events.json')
+                        with open(output_file_path, 'w', encoding='utf-8') as output_file:
+                            json.dump(events_data, output_file, indent=4)
+                        if 1:   
+                            # For "EVENT_CONNECTED" events, look for corresponding "EVENT_DISCONNECTED"
+                            if event_name == "EVENT_CONNECTED":
+                                connected_date = datetime.strptime(file_name.split('.')[0], "%Y-%m-%d_%H-%M-%S")
+                                disconnect_found = False
+                                for check_file in event_files:
+                                    if check_file > file_name: # Look for files with a later date
+                                        check_path = os.path.join(character_dir, check_file)
+                                        with open(check_path, 'r') as f:
+                                            check_data = json.load(f)
+                                        check_key = next(iter(check_data))
+                                        if check_data[check_key]['event_name'] == "EVENT_DISCONNECTED":
+                                            disconnect_found = True
+                                            # Append EVENT_DISCONNECTED to master and delete both files
+                                            events_data.setdefault(check_key, []).append(check_data[check_key])
+                                            os.remove(check_path)  # Delete EVENT_DISCONNECTED file
+                                            break
+                                if disconnect_found:
+                                    # Before deleting, check if the file exists
+                                    if os.path.exists(file_path):
+                                        os.remove(file_path)  # Delete EVENT_CONNECTED file only if disconnect is found
+                                    else:
+                                        print(f"File not found, cannot delete: {file_path}")
+                            else:
+                                # Delete files for events other than "EVENT_CONNECTED" after appending
+                                os.remove(file_path)
 
-    # Delete marked files after all events have been processed and added to events_data
-    for file_path in files_to_delete:
-        try:
-            os.remove(file_path)
-            print(f"Deleted: {file_path}")
-        except FileNotFoundError:
-            print(f"File already deleted: {file_path}")
-    events_sent = False
-    print("Event processing complete, events_sent reset to False.")
-
-    # Save the extracted data to events.json once after processing all events
-    output_file_path = os.path.join(info_path, 'events.json')  # Ensure info_path is correctly defined
-    with open(output_file_path, 'w', encoding='utf-8') as output_file:
-        json.dump(events_data, output_file, indent=4)
-    print("Events data saved.")
-
-
+                            events_sent = False
 
 ###########################################
 #GET THE STATZ FROM INFO FOLDER  (PLUGIN)
@@ -165,7 +151,7 @@ def processData():
     local_stall_data = {}
 
     # Helper function to read JSON with retries
-    def read_json_with_retries(file_path, max_retries=16):
+    def read_json_with_retries(file_path, max_retries=15):
         for attempt in range(max_retries):
             try:
                 with open(file_path, 'r', encoding='utf-8') as json_file:
@@ -212,68 +198,8 @@ def processData():
         if key in local_data:
             local_data[key].update(value)
 
-     # Update the global statz_data with the compiled local_data
-    for key, value in local_data.items():
-        if key in statz_data:
-            # If the key exists in statz_data, update it
-            statz_data[key].update(value)
-        else:
-            # If the key doesn't exist, add it to statz_data
-            statz_data[key] = value
-
-
-###########################################
-#GET THE SPEED FROM INFO FOLDER  (PLUGIN)
-def processSpeed():
-    global speed_data  # Reference the global variable to update it later
-    global speed_pause
-
-    # Initialize local dictionaries for compiling data
-    local_data = {}
-    # Helper function to read JSON with retries
-    def read_json_with_retries(file_path, max_retries=16):
-        for attempt in range(max_retries):
-            try:
-                with open(file_path, 'r', encoding='utf-8') as json_file:
-                    return json.load(json_file)
-            except json.JSONDecodeError:
-                print(f"Attempt {attempt + 1} failed to decode JSON in {file_path}")
-                if attempt == max_retries - 1:  # Last attempt also failed
-                    print(f"Final attempt to read {file_path} failed.")
-                    return None  # or {} if you prefer to return an empty dict instead of None
-        return None
-    if speed_pause == False:
-        speed_data = {}
-       
-        for directory in os.listdir(speed_dir):
-            directory_path = os.path.join(speed_dir, directory)
-            if os.path.isdir(directory_path):  # Ensure it's a directory
-                for filename in os.listdir(directory_path):
-                    if filename.endswith(".json"):  # Focus on JSON files
-                        file_path = os.path.join(directory_path, filename)
-                        
-                        data = read_json_with_retries(file_path)
-                        if data is not None:
-                           
-                            for key, value in data.items():
-                              
-                                if key in local_data:  # Merge data into local_data
-                                    local_data[key].update(value)
-                                else:
-                                    local_data[key] = value
-
-
-        # Update the global statz_data with the compiled local_data
-        for key, value in local_data.items():
-            if key in speed_data:
-                # If the key exists in statz_data, update it
-                speed_data[key].update(value)
-            else:
-                # If the key doesn't exist, add it to statz_data
-                speed_data[key] = value
-        output_file_path = os.path.join(info_path, 'speed.json')
-        with open(output_file_path, 'w', encoding='utf-8') as output_file:
-            json.dump(speed_data, output_file, indent=4)
+    # Finally, replace the global statz_data with the compiled local_data
+    statz_data = local_data
 
 ###########################################
 #GET THE MESSAGES FROM INFO FOLDER  (PLUGIN)
@@ -357,29 +283,29 @@ def processMessages():
 
 # GET THE STATS SENT FROM PHBOT URL SYSTEM (MANAGER) 
 ############################################
-# @app.route('/phBotHTTP', methods=['POST'])
-# def phBotHTTP():
-#     global manager_data
-#     manager_data = {}
-#     data = request.form.get('data')
-#     if data:
-#         # Replace "1.#INF" with null in the data string
-#         cleaned_data = data.replace("1.#INF", "null")
+@app.route('/phBotHTTP', methods=['POST'])
+def phBotHTTP():
+    global manager_data
+    manager_data = {}
+    data = request.form.get('data')
+    if data:
+        # Replace "1.#INF" with null in the data string
+        cleaned_data = data.replace("1.#INF", "null")
 
-#         # Load the modified JSON data as a dictionary
-#         data_dict = json.loads(cleaned_data)
+        # Load the modified JSON data as a dictionary
+        data_dict = json.loads(cleaned_data)
 
-#         # Remove the 'time_to_level' field from each sub-dictionary
-#         for key in data_dict:
-#             if 'time_to_level' in data_dict[key]:
-#                 del data_dict[key]['time_to_level']
+        # Remove the 'time_to_level' field from each sub-dictionary
+        for key in data_dict:
+            if 'time_to_level' in data_dict[key]:
+                del data_dict[key]['time_to_level']
 
-#         # Set the modified dictionary as the latest_data
-#         manager_data = data_dict
+        # Set the modified dictionary as the latest_data
+        manager_data = data_dict
 
-#         return "Data received and stored for process1"
-#     else:
-#         return "No data received"
+        return "Data received and stored for process1"
+    else:
+        return "No data received"
 ############################################ 
 
 
@@ -450,25 +376,12 @@ def handle_message(data):
         
 
 
-socketio.on('fetch_SPEED')
-def handle_fetch_speed():
-
-    global speed_pause
-
-    if not speed_pause and speed_data:
-                # Emit the events data via socket
-        socketio.emit('characters_speed', speed_data)
-    else:
-        # Emit an error message if no data is available
-        socketio.emit('speed_error', 'No data available yet.')
-
-
 socketio.on('fetch_EVENTS')
 def handle_fetch_events():
 
     global events_sent
 
-    if events_sent == False:
+    if events_data:
                 # Emit the events data via socket
         socketio.emit('characters_events', events_data)
         events_sent = True
@@ -484,6 +397,7 @@ def handle_fetch_events():
 
 
 
+
 socketio.on('fetch_STATZ')
 def handle_fetch_characters():
     global statz_data  # Assuming statz_data is a global variable holding stats
@@ -491,19 +405,17 @@ def handle_fetch_characters():
     local_statz_data = statz_data.copy()  # Create a local copy of statz_data
     info_data = {}  # Initialize a local dictionary for the merged data
 
-    # Copy only keys from statz_data to info_data where the manager data is true
+    # Copy every key from statz_data to info_data
     for key, value in local_statz_data.items():
-        if value.get('manager') == True:  # Check if the manager data is true
-            info_data[key] = value
+        info_data[key] = value
 
     # Check if there is any data to emit
     if info_data:
-        # Emit the filtered data via socket
+        # Emit the combined data via socket
         socketio.emit('characters_data', info_data)
     else:
-        # Emit an error message if no data available that meets the criteria
-        socketio.emit('characters_error', 'No data available yet or manager data not set to true.')
-
+        # Emit an error message if no data is available
+        socketio.emit('characters_error', 'No data available yet.')
 
 
 ###########################################
@@ -531,8 +443,6 @@ def handle_fetch_messages():
 
 @socketio.on('speed_cast')
 def handle_speed_cast(payload):
-    global speed_pause
-    speed_pause = True
     # Extract details from payload
     character_name = payload['character']
     server_name = payload['server']
@@ -540,7 +450,8 @@ def handle_speed_cast(payload):
     players_list = payload['list']
     isBard = payload['isBard']
     main = payload['main']
-    job_mode = payload['jobMode']
+    march = payload['march']
+  
     # Formulate the data to save
     data_dict = { 
         f"{character_name}/{server_name}": {  # Maintain the '/' in the key for readability
@@ -548,8 +459,7 @@ def handle_speed_cast(payload):
             "list": players_list,
             "isBard": isBard,
             'main': main,
-            
-            'jobMode':job_mode
+            'march':march,
      
         }
     }
@@ -570,8 +480,6 @@ def handle_speed_cast(payload):
         print(f"Data for {character_name} on {server_name} saved successfully.")
     except Exception as e:
         print(f"Failed to save data for {character_name} on {server_name}. Error: {e}")
-
-    speed_pause = False
 
 
 @socketio.on('new_MESSAGES')  # Create a new event 'new_MESSAGES'
@@ -598,41 +506,41 @@ def handle_new_messages():
 ######### DATA FROM CONFIG FOLDER #########
 
 
-# def extract_conditions_data():
+def extract_conditions_data():
    
 
-#     # Create a dictionary to store conditions data for each file
-#     conditions_data = {}
+    # Create a dictionary to store conditions data for each file
+    conditions_data = {}
 
-#     # Define a regular expression pattern to match the filename pattern "server_character.json"
-#     filename_pattern = re.compile(r'^(.+)_(.+)\.json$')
+    # Define a regular expression pattern to match the filename pattern "server_character.json"
+    filename_pattern = re.compile(r'^(.+)_(.+)\.json$')
 
-#     # Iterate over files in the config directory
-#     for file_name in os.listdir(config_directory_path):
-#         if file_name.endswith('.json'):
-#             # Check if the filename matches the pattern
-#             match = filename_pattern.match(file_name)
-#             if match:
-#                 server = match.group(1)
-#                 character = match.group(2)
-
-
+    # Iterate over files in the config directory
+    for file_name in os.listdir(config_directory_path):
+        if file_name.endswith('.json'):
+            # Check if the filename matches the pattern
+            match = filename_pattern.match(file_name)
+            if match:
+                server = match.group(1)
+                character = match.group(2)
 
 
 
-#                 file_path = os.path.join(config_directory_path, file_name)
-#                 with open(file_path, 'r', encoding='utf-8') as json_file:
-#                     try:
-#                         data = json.load(json_file)
-#                         conditions_data[f"{server}_{character}"] = data.get('Conditions', {})
-#                     except (json.JSONDecodeError, ValueError):
-#                         print(f"Error processing file {file_path}")
+
+
+                file_path = os.path.join(config_directory_path, file_name)
+                with open(file_path, 'r', encoding='utf-8') as json_file:
+                    try:
+                        data = json.load(json_file)
+                        conditions_data[f"{server}_{character}"] = data.get('Conditions', {})
+                    except (json.JSONDecodeError, ValueError):
+                        print(f"Error processing file {file_path}")
           
 
-#     # Save the extracted data to conditions.json in main_directory_path
-#     output_file_path = os.path.join(info_path, 'conditions.json')
-#     with open(output_file_path, 'w', encoding='utf-8') as output_file:
-#         json.dump(conditions_data, output_file, indent=4)
+    # Save the extracted data to conditions.json in main_directory_path
+    output_file_path = os.path.join(main_directory_path, 'conditions.json')
+    with open(output_file_path, 'w', encoding='utf-8') as output_file:
+        json.dump(conditions_data, output_file, indent=4)
 
 ######### DATA FROM CONFIG FOLDER #########
 ###########################################
@@ -667,85 +575,153 @@ def get_characters():
 
 
 
+def speed_condition():
 
+    # Define a regular expression pattern to match the filename pattern "server_character.json"
+    filename_pattern = re.compile(r'^(.+)_(.+)\.json$')
+
+
+
+        # Iterate through each server folder
+    for server_name in os.listdir(speed_dir):
+        server_path = os.path.join(speed_dir, server_name)
+        if os.path.isdir(server_path):
+            # Iterate through each character JSON file in the server directory
+            for file_name in os.listdir(server_path):
+                if file_name.endswith('.json') and not file_name.startswith('condition'):
+                    character_path = os.path.join(server_path, file_name)
+                    with open(character_path, 'r') as json_file:
+                        character_data = json.load(json_file)
+                        for key, values in character_data.items():
+                            character_name, character_server = key.split('/')
+                            
+                            checked = values.get('checked', False)
+                            item_list = values.get('list', [])
+                            march = values.get('march',"")
+                            is_bard = values.get('isBard', False)
+                            main = values.get('main', "")
+                            # Save to a new file in the same server directory
+                            export_filename = f"condition_{character_name}.json"
+                            export_path = os.path.join(server_path, export_filename)
+                            # If checked is true, is bard, and main is true
+                            if checked:
+                                if is_bard:
+                                    base_conditions = [
+                                        {"if": 10, "op": 2, "value_1": "checkrecastspeed", "value_2": ""},
+                                        {"if": 11, "op": 2, "value_1": "", "value_2": ""}
+                                    ]
+
+                                    # Initialize then_clause based on 'main'
+                                    if main == "Main":
+                                        then_clause = [
+                                            {"then": 49, "value": "ok", "value_2": ""},
+                                            {"then": 15, "value": march, "value_2": ""}
+                                        ]
+                                        # Define export_data with the appropriate configuration
+                                        export_data = {
+                                            f"{character_server}_{character_name}": [{
+                                                "Enabled": True,
+                                                "if": base_conditions,
+                                                "then": then_clause,
+                                               
+                                            }]
+                                        }
+                                    else:
+                                        for name in item_list:
+                                            base_conditions.append({"if": 1, "op": 2, "value_1": name, "value_2": ""})         #if main not in training area
+
+                                        if march == "Swing March":
+
+
+                                            then_clause =  [{"then": 49, "value": "ok", "value_2": ""},                     # ok message
+
+                                                            {"then": 17, "value": "cast_Swing", "value_2": ""}]               # cast speed if not main    SWING  
+                                        else:
+                                            then_clause =  [{"then": 49, "value": "ok", "value_2": ""},                     # ok message
+
+                                                            {"then": 17, "value": "cast_Moving", "value_2": ""}] 
+                                                          # cast speed if not main    
+                                        # Append a new configuration for the current item
+                                        export_data = {
+                                            f"{character_server}_{character_name}": [{
+                                                "Enabled": True,
+                                                "if": base_conditions,
+                                                "then": then_clause,
+                                               
+                                            }]
+                                        }
+
+                                if not is_bard:
+                                    base_conditions = [
+                                        {"if": 11, "op": 2, "value_1": "", "value_2": ""},
+                                        {"if": 19, "op": 2, "value_1": march, "value_2": ""},
+                                        {"if": 10, "op": 2, "value_1": "search_speed", "value_2": ""}
+                                    ]
+
+                                    then_clause = [{"then": 49, "value": "speeddeeps", "value_2": ""}]
+
+                                    export_data = {f"{character_server}_{character_name}": []}
+
+                                    # Generate configurations for each name in the item_list
+                                    for index, current_name in enumerate(item_list):
+                                        # Start with a fresh copy of base conditions for each item
+                                        conditions = base_conditions.copy()
+                                        
+                                        # Add condition for each previous item with "if": 1
+                                        for previous_name in item_list[:index]:
+                                            conditions.append({"if": 1, "op": 2, "value_1": previous_name, "value_2": ""})
+                                        
+                                        # Add condition for the current item with "if": 0
+                                        conditions.append({"if": 0, "op": 2, "value_1": current_name, "value_2": ""})
+
+                                        # Prepare the configuration for the current set of conditions
+                                        config = {
+                                            "Enabled": True,
+                                            "if": conditions,
+                                            "then": then_clause,
+                                        }
+                                        
+                                        # Append the configuration for the current item to export_data
+                                        export_data[f"{character_server}_{character_name}"].append(config)
+
+
+
+
+
+                                
+                                with open(export_path, 'w') as export_file:
+                                    json.dump(export_data, export_file, indent=4)
+                              
+                                
+                            elif not checked and os.path.exists(export_path):
+
+                                 
+
+                                # Remove the file if it exists and checked is False
+                                os.remove(export_path)
+                                print(f"Removed condition file for {character_name} in {server_name}, since checked is False.")
 
 def background_task():
     """Background task to send socketio messages."""
     while True:
         processData()
         processMessages()
-        processSpeed()
-        
-
-        #extract_conditions_data()  # config
-
+        speed_condition()
+        extract_conditions_data()
         handle_fetch_characters()
         handle_fetch_messages() 
         handle_fetch_events()
-        handle_fetch_speed()
         process_events(events_directory)
         time.sleep(3)  
 
-def run_gui():
-    global main_directory_path, manager_exe_path, silkroad_launcher_path  # Declare global variables
 
-    # Initialize the variables
-    main_directory_path = ""
-    manager_exe_path = ""
-    silkroad_launcher_path = ""
 
-    def select_path(var_name):
-        path = filedialog.askdirectory() if var_name == "main_directory_path" else filedialog.askopenfilename()
-        if path:
-            globals()[var_name] = path  # Update the global variable with the selected path
-            if all([main_directory_path, manager_exe_path, silkroad_launcher_path]):
-                start_server_button['state'] = 'normal'  # Enable the button if all paths are selected
-            labels[var_name].config(text=path)  # Update the label with the selected path
 
-    window = tk.Tk()
-    window.title("Select Required Paths")
-    # Maximize the window
-    window.state('zoomed')
-
-    # Using a frame to easily center widgets
-    center_frame = tk.Frame(window)
-    center_frame.pack(expand=True)
-
-    labels = { 
-        "main_directory_path": tk.Label(center_frame, text="No directory selected"),
-        "manager_exe_path": tk.Label(center_frame, text="No file selected"),
-        "silkroad_launcher_path": tk.Label(center_frame, text="No file selected")
-    }
-
-    # Adjusting the grid and adding more space between buttons and labels
-    tk.Button(center_frame, text="Browse phBot Directory", command=lambda: select_path("main_directory_path")).grid(row=0, column=0, pady=(10, 2), padx=10)
-    labels["main_directory_path"].grid(row=1, column=0, pady=(2, 10), padx=10)
-    tk.Button(center_frame, text="Browse Manager.exe", command=lambda: select_path("manager_exe_path")).grid(row=2, column=0, pady=(10, 2), padx=10)
-    labels["manager_exe_path"].grid(row=3, column=0, pady=(2, 10), padx=10)
-    tk.Button(center_frame, text="Browse Silkroad Launcher", command=lambda: select_path("silkroad_launcher_path")).grid(row=4, column=0, pady=(10, 2), padx=10)
-    labels["silkroad_launcher_path"].grid(row=5, column=0, pady=(2, 10), padx=10)
-
-    start_server_button = tk.Button(center_frame, text="Start Server", state='disabled', command=lambda: gui_done.set() or window.destroy())
-    start_server_button.grid(row=6, column=0, pady=20, padx=10)
-
-    window.mainloop()
-
-def start_server():
-    """Starts the Flask and SocketIO server after GUI is done."""
-    gui_done.wait()  # Wait for the GUI to finish
-    if main_directory_path:
-        initialize_directories()
-        socketio.start_background_task(background_task)
-        print("Server starting...")
-        socketio.run(app, host='0.0.0.0', port=5000, debug=True, use_reloader=False)
-    else:
-        print("No directory was selected. Server not started.")
+socketio.start_background_task(background_task)
 
 if __name__ == '__main__':
-    gui_thread = Thread(target=run_gui)
-    gui_thread.start()
-    gui_thread.join()  # Wait for the GUI thread to finish
-    start_server()
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True) 
+
 
 
 
