@@ -444,8 +444,7 @@ def handle_message(data):
 
 
 ###########################################
-# SEND STATZ (FROM PLUGIN + MANAGER) TO CLIENT
-# NEED TO MERGE THOSE 2 DATA JSON INTO SAME KEY (CHARACTER/SERVER)
+# SEND STATZ (FROM PLUGIN) TO CLIENT
 ###########################################
         
 
@@ -528,7 +527,7 @@ def handle_fetch_messages():
 ###########################################
 ###########################################
 
-
+#rx
 @socketio.on('speed_cast')
 def handle_speed_cast(payload):
     global speed_pause
@@ -573,7 +572,7 @@ def handle_speed_cast(payload):
 
     speed_pause = False
 
-
+#rx
 @socketio.on('new_MESSAGES')  # Create a new event 'new_MESSAGES'
 def handle_new_messages():
     try:
@@ -731,8 +730,10 @@ def run_gui():
     window.mainloop()
 
 def start_server():
+    print("Waiting for gui_done event.")
     """Starts the Flask and SocketIO server after GUI is done."""
     gui_done.wait()  # Wait for the GUI to finish
+    print("gui_done event received, starting server.")
     if main_directory_path:
         initialize_directories()
         socketio.start_background_task(background_task)
