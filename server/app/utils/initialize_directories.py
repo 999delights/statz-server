@@ -10,26 +10,26 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, disconnect
 import json
 import time
-from . import config
+from . import var
 
 def initialize_directories():
 
-    if config.main_directory_path:
+    if var.main_directory_path:
         # Simply define the paths without creating directories or files
-        config.info_path = os.path.join(config.main_directory_path, 'Plugins', 'info')
-        config.count_path = os.path.join(config.info_path, 'messages', 'count.json')
-        config.config_path = os.path.join(config.main_directory_path, 'Config')
-        config.statz_path = os.path.join(config.info_path, 'statz')
-        config.chat_path = os.path.join(config.info_path, 'messages', 'msgs')
-        config.stall_path = os.path.join(config.info_path, 'stall')
-        config.events_path = os.path.join(config.info_path, 'events')
+        var.info_path = os.path.join(var.main_directory_path, 'Plugins', 'info')
+        var.count_path = os.path.join(var.info_path, 'messages', 'count.json')
+        var.config_path = os.path.join(var.main_directory_path, 'config')
+        var.statz_path = os.path.join(var.info_path, 'statz')
+        var.chat_path = os.path.join(var.info_path, 'messages', 'msgs')
+        var.stall_path = os.path.join(var.info_path, 'stall')
+        var.events_path = os.path.join(var.info_path, 'events')
 
         # Only create these directories if they don't exist
-        config.live_chat_path = os.path.join(config.info_path, 'messages', 'LIVE')
-        config.tasks_path = os.path.join(config.info_path, 'tasks')
-        config.speed_path = os.path.join(config.tasks_path, 'speed')
+        var.live_chat_path = os.path.join(var.info_path, 'messages', 'LIVE')
+        var.tasks_path = os.path.join(var.info_path, 'tasks')
+        var.speed_path = os.path.join(var.tasks_path, 'speed')
 
-        directories_to_create = [config.live_chat_path, config.tasks_path, config.speed_path]
+        directories_to_create = [var.live_chat_path, var.tasks_path, var.speed_path]
 
         for directory in directories_to_create:
             os.makedirs(directory, exist_ok=True)

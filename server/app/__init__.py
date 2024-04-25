@@ -1,7 +1,18 @@
+# app/__init__.py
 from flask import Flask
 from flask_socketio import SocketIO
 
-app = Flask(__name__)
-socketio = SocketIO(app, ping_timeout=5, ping_interval=2, cors_allowed_origins="*")
+socketio = SocketIO()
 
-# Make sure that no other imports happen until after the above definitions
+def create_app():
+    app = Flask(__name__)
+
+    socketio.init_app(app, cors_allowed_origins="*")
+
+    from .utils import models, defines, calculateAB, gui, initialize_directories
+    from .process import process_chat, process_speed, process_character_data, process_events, process_map
+    from .comm import comm_map_data, comm
+
+    # Register your blueprints or other components here
+
+    return app

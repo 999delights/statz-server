@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, disconnect
 import json
 import time
-from ..utils import config
+from ..utils import var
 
 
 
@@ -35,11 +35,11 @@ def process_speed():
                     print(f"Final attempt to read {file_path} failed.")
                     return None  # or {} if you prefer to return an empty dict instead of None
         return None
-    if config.speed_pause == False:
-        config.speed_data = {}
+    if var.speed_pause == False:
+        var.speed_data = {}
        
-        for directory in os.listdir(config.speed_path):
-            directory_path = os.path.join(config.speed_path, directory)
+        for directory in os.listdir(var.speed_path):
+            directory_path = os.path.join(var.speed_path, directory)
             if os.path.isdir(directory_path):  # Ensure it's a directory
                 for filename in os.listdir(directory_path):
                     if filename.endswith(".json"):  # Focus on JSON files
@@ -58,12 +58,12 @@ def process_speed():
 
         # Update the global statz_data with the compiled local_data
         for key, value in local_data.items():
-            if key in config.speed_data:
+            if key in var.speed_data:
                 # If the key exists in statz_data, update it
-                config.speed_data[key].update(value)
+                var.speed_data[key].update(value)
             else:
                 # If the key doesn't exist, add it to statz_data
-                config.speed_data[key] = value
-        output_file_path = os.path.join(config.info_path, 'speed.json')
+                var.speed_data[key] = value
+        output_file_path = os.path.join(var.info_path, 'speed.json')
         with open(output_file_path, 'w', encoding='utf-8') as output_file:
-            json.dump(config.speed_data, output_file, indent=4)
+            json.dump(var.speed_data, output_file, indent=4)

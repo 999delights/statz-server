@@ -9,7 +9,7 @@ from datetime import datetime
 from turtle import speed
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, disconnect
-from . import config
+from . import var
 
 
     
@@ -21,11 +21,11 @@ def start_gui(gui_done):
         path = filedialog.askdirectory() if var_name == "main_directory_path" else filedialog.askopenfilename()
         if path:
             # Set the attribute on config when a path is chosen
-            setattr(config, var_name, path)
-            print(f"{var_name} set to: {getattr(config, var_name)}")  # Display the path for debugging
+            setattr(var, var_name, path)
+            print(f"{var_name} set to: {getattr(var, var_name)}")  # Display the path for debugging
             
             # Check if all required paths are set before enabling the server start button
-            if all([config.main_directory_path, config.manager_exe_path, config.silkroad_launcher_path]):
+            if all([var.main_directory_path, var.manager_exe_path, var.silkroad_launcher_path]):
                 print("All required paths have been selected. Enabling server start.")
                 start_server_button['state'] = 'normal'
             else:

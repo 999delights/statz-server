@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, disconnect
 import json
 import time
-from ..utils import config
+from ..utils import var
 ###########################################
 #GET THE MESSAGES FROM INFO FOLDER  (PLUGIN)
 #THIS INCLUDE THE COUNT LOGIC 
@@ -21,8 +21,8 @@ def process_chat():
     local_count = {}  # Local dictionary for message counts
 
     # Process the 'messages' directory: gather chat and message data.
-    for directory in os.listdir(config.chat_path):
-        directory_path = os.path.join(config.chat_path, directory)
+    for directory in os.listdir(var.chat_path):
+        directory_path = os.path.join(var.chat_path, directory)
         if os.path.isdir(directory_path):  # Check if the item is a directory
             for filename in os.listdir(directory_path):
                 if filename.endswith(".json"):  # Process only JSON files
@@ -40,7 +40,7 @@ def process_chat():
 
 
     # After processing, update the global messages_data
-    config.chat_data = local_messages_data
+    var.chat_data = local_messages_data
 
     # Compile message counts from local_messages_data into local_count
     for character, character_data in local_messages_data.items():
@@ -49,19 +49,19 @@ def process_chat():
         local_count[character] = {'msgs': msgs_count, 'dmTOmsgs': dmTOmsgs_count}
 
     # Check the existence of the count.json file and compare with local_count
-    if not os.path.exists(config.count_path):
-        config.new_chat_saved = True  # File doesn't exist, new data available
+    if not os.path.exists(var.count_path):
+        var.new_chat_saved = True  # File doesn't exist, new data available
         # Create the file and write local_count data
-        with open(config.count_path, 'w', encoding='utf-8') as json_file:
+        with open(var.count_path, 'w', encoding='utf-8') as json_file:
             json.dump(local_count, json_file, indent=4)
     else:
         # Load existing data and compare with local_count
-        with open(config.count_path, 'r', encoding='utf-8') as json_file:
+        with open(var.count_path, 'r', encoding='utf-8') as json_file:
             existing_count_data = json.load(json_file)
         # Compare existing data with local_count
         if existing_count_data != local_count:
-            config.new_chat_saved = True  # Data differs, new data available
+            var.new_chat_saved = True  # Data differs, new data available
             # Update the file with new local_count data
-            with open(config.count_path, 'w', encoding='utf-8') as json_file:
+            with open(var.count_path, 'w', encoding='utf-8') as json_file:
                 json.dump(local_count, json_file, indent=4)
     

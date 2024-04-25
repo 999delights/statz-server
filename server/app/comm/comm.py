@@ -1,16 +1,9 @@
 import os
-from threading import Thread, Event
-import tkinter as tk
-from tkinter import filedialog
-import eventlet
-eventlet.monkey_patch()
 from datetime import datetime
-from turtle import speed
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit, disconnect
+
 import json
-from .. import app, socketio
-from ..utils import config
+from .. import socketio
+from ..utils import var
 
 
 
@@ -20,9 +13,9 @@ def handle_disconnect():
     print('Client disconnected')
 
 
-@socketio.on('disconnect_request')
-def disconnect_request():
-    disconnect()
+#@socketio.on('disconnect_request')
+#def disconnect_request():
+#    disconnect()
 
 
 
@@ -56,7 +49,7 @@ def handle_new_messages():
 @socketio.on('speed_cast')
 def handle_speed_cast(payload):
    
-    config.speed_pause = True
+    var.speed_pause = True
     # Extract details from payload
     character_name = payload['character']
     server_name = payload['server']
@@ -80,7 +73,7 @@ def handle_speed_cast(payload):
 
 
     # Complete file path
-    file_path = os.path.join(config.speed_path, server_name, f'{character_name}.json')
+    file_path = os.path.join(var.speed_path, server_name, f'{character_name}.json')
     
     # Verify directory exists or create it (for nested character/server structures)
     dir_path = os.path.dirname(file_path)
@@ -95,7 +88,7 @@ def handle_speed_cast(payload):
     except Exception as e:
         print(f"Failed to save data for {character_name} on {server_name}. Error: {e}")
 
-    config.speed_pause = False
+    var.speed_pause = False
 
 
 
@@ -118,7 +111,7 @@ def handle_message(data):
             current_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
             # Create a directory for the sender under "messages" if it doesn't exist
-            sender_dir = os.path.join(config.live_chat_path, server, sender)
+            sender_dir = os.path.join(var.live_chat_path, server, sender)
             if not os.path.exists(sender_dir):
                 os.makedirs(sender_dir)
 

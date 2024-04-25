@@ -4,6 +4,7 @@ import os
 from threading import Thread, Event
 import tkinter as tk
 from tkinter import filedialog
+from tokenize import Double
 import eventlet
 eventlet.monkey_patch()
 from datetime import datetime
@@ -14,6 +15,22 @@ import json
 import time
 import logging
 import re
+
+from server.data.maps import map_map_layers
+from server.data.maps import map_dungeon 
+from math import atan2, pi
+
+
+
+
+from server.app.utils import calculateAB
+from server.app.utils import encode_image
+from server.data.maps import map_npcos
+from server.data.maps import map_tps_pos
+from server.data.maps import map_regions_id_name
+
+
+
 
 app = Flask(__name__)
 socketio = SocketIO(app, ping_timeout=5, ping_interval=2, cors_allowed_origins="*")
@@ -68,6 +85,9 @@ new_messages_saved = False
 
 speed_pause = False
 events_sent = False
+
+
+
 
 
 
@@ -400,7 +420,7 @@ def processMessages():
 
 ###########################################
 #LIVE-ALL SENT MESSAGES FROM APP(CLIENT)
-@socketio.on('messages')
+@socketio.on('live_chat')
 def handle_message(data):
     if data:
         try:
@@ -664,7 +684,844 @@ def get_characters():
 
 
 
+#Images
+base_path = 'lib/images/'
+npcImage =  base_path + 'mm_sign_npc.jpg'
+charImage = base_path + 'mm_sign_character.png'
+monsterImage = base_path + 'mm_sign_monster.jpg'
+ptImage = base_path + 'mm_sign_party.jpg'
+ptImageSelected = base_path + 'mm_sign_party2.jpg'
+pplImage = base_path + 'mm_sign_otherplayer.jpg'
+defaultImage = base_path + 'DEFAULTMAP.png'
 
+prevA = None
+prevB = None
+prevAX = None
+prevBY = None
+rotationAngle = float(0)
+lastDirection = 'No Direction'
+
+def calculate_map_data(character_name,job_name, server_name ,character,width):
+    global prevA
+    global prevB
+    global prevAX
+    global prevBY
+    global rotationAngle
+    global lastDirection
+    
+    backgroundChanged = False
+    
+    
+   
+    npcPositions = []
+    tpsPositions = []
+    monstersPositions = []
+    ptPositions = []
+    selectedPositions = []
+    pplPositions = []
+    trainingPosition = []
+    charPosition = []
+    region_name = ''
+    images = []
+    #char initials
+
+    region = character['position']['region']
+    x = character['position']['x']
+    y = character['position']['y']
+    z = character['position']['z']
+    path = path_finder(region)
+    a = 0
+    b = 0
+    x2 = 0
+    y2 = 0
+    aX = 0
+    bY = 0
+    prefix = ''
+
+    
+    try:
+        # Attempt to fetch the region name directly
+        region_name = map_regions_id_name.idNameMapp[str(region)]
+    except KeyError:
+        # If direct fetch fails, try with adjusted region key
+        try:
+            adjusted_region = region - 65536
+            region_name = map_regions_id_name.idNameMapp[str(adjusted_region)]
+        except KeyError:
+            # If both attempts fail, return an empty string
+            region_name = ""
+
+    #training area initials
+    xTr = character["training_area"]['x']
+    yTr = character["training_area"]['y']
+    zTr = character["training_area"]['z']
+    regionTr = character["training_area"]['region']
+    radius = character["training_area"]['radius']
+    aTr = 0
+    bTr = 0
+    x2Tr = 0
+    y2Tr = 0
+    axTr = 0
+    byTr = 0
+
+    #mobs initials
+    monsters = character['monsters']
+    xM = 0
+    yM = 0
+    regionM = 0
+    aM = 0
+    bM = 0
+    axM = 0
+    byM = 0
+    x2M = 0
+    y2M = 0
+
+    #party initials
+    party = character['party']
+    isPartyNotEmpty = bool(party)
+    xPt = 0
+    yPt = 0
+    regionPt = 0
+    aPt = 0
+    bPt = 0
+    axPt = 0
+    byPt = 0
+    x2Pt = 0
+    y2Pt = 0
+
+    #other players initials
+    ppl = {}
+    xPpl = 0
+    yPpl = 0
+    regionPpl = 0
+    aPpl = 0
+    bPpl = 0
+    axPpl = 0
+    byPpl = 0
+    x2Ppl = 0
+    y2Ppl = 0
+
+
+
+
+    #calculate
+
+    ##for tr
+    tr = calculate_ab(regionTr,xTr,yTr,zTr,aTr,bTr,axTr,byTr,x2Tr,y2Tr,False, prefix = None)
+
+    ##for char
+    print("char"+ prefix)
+    char = calculate_ab( region,x, y, z,a,b,aX,bY,x2,y2,False, prefix= prefix)
+
+
+    #grid
+
+    gridA = position_values_a(char.a)
+    gridB = position_values_b(char.b)
+    posLeft = positions_left(width)
+    posTop = positions_top(width)
+
+    lastDirection = determine_direction(prevAX,prevBY,char.ax,char.by,prevA,prevB, char.a,char.b )
+    
+    if isinstance(lastDirection, float):
+        rotationAngle = lastDirection
+
+    
+    def has_a_or_b_changed():
+        return prevA != char.a or prevB != char.b
+    
+            # Determine if there has been a change
+    a_or_b_changed = has_a_or_b_changed()
+
+    # Set animation duration based on whether there was a change
+    animation_duration = 0 if a_or_b_changed else 300
+    
+    prevAX = char.ax
+    prevBY = char.by
+ 
+    prevA = char.a
+    prevB = char.b
+
+    offsetX = width * -char.by /2 
+    offsetY = width * -char.ax /2
+
+   
+
+
+    for i in range(3):  # iterating over three rows
+        for j in range(3):  # iterating over three columns
+            image_path = f"{path}{char.prefix}{int(gridA[i][j])}x{int(gridB[i][j])}.jpg"
+            # Create a dictionary for each image with its path and positions
+            item = {
+                'image': image_path,
+                'left': posLeft[i][j],
+                'top': posTop[i][j]
+            }
+            images.append(item)
+
+
+    regionCombinations = generate_regions_from_ab_combinations(gridA, gridB,char.region)
+
+
+
+
+    #TRAINING AREA CALCULATE
+    for r in regionCombinations:
+      
+        
+        
+        if regionTr == int(r):
+            # Check proximity conditions
+            condition2CheckaTr = tr.a in [char.a- 1, char.a, char.a + 1]
+            condition3CheckbTr = tr.b in [char.b - 1, char.b, char.b + 1]
+            
+            if condition2CheckaTr and condition3CheckbTr:
+                # Calculate positions
+                left = calculate_position(tr.a, char.a, tr.b, char.b, tr.ax, tr.by, True, posLeft)
+                bottom = calculate_position(tr.a, char.a, tr.b, char.b, tr.ax, tr.by, False, posTop)
+                
+                # Set position with radius in the dictionary
+                trainingPosition.append({
+                    'left': left - radius,  # Adjust to center the circle
+                    'bottom': bottom - radius,
+                    'radius': radius
+                })
+                
+
+    #PARTY CALCULATE
+    for key, value in party.items():
+        xPt = value['x']
+        yPt = value['y']
+        regionPt = value['region']
+        playerName = value['name']
+
+        # Calculate position for each party member
+        pt = calculate_ab(regionPt, xPt, yPt, 0, aPt, bPt, axPt, byPt, x2Pt, y2Pt, False, None)
+
+        # Check proximity conditions
+        condition1CheckaNpc = pt.a in [char.a - 1, char.a, char.a + 1]
+        condition2CheckbNpc = pt.b in [char.b - 1, char.b, char.b + 1]
+
+        if condition1CheckaNpc and condition2CheckbNpc:
+            # Calculate left and bottom positions
+            left = calculate_position(pt.a, char.a, pt.b, char.b, pt.ax, pt.by, True, posLeft)
+            bottom = calculate_position(pt.a, char.a, pt.b, char.b, pt.ax, pt.by, False, posTop)
+            if playerName != character_name and job_name != playerName:
+                # Append the calculated positions to ptPositions
+
+                pt_entry = {
+                    'playerName': playerName,
+                    'left': left,
+                    'bottom': bottom,
+                    'image': ptImage  # Assuming a generic path or use a condition to determine the image
+
+                }
+                ptPositions.append(pt_entry)
+
+
+    #mobs calculate
+    for key, value in monsters.items():
+        xM = value['x']
+        yM = value['y']
+        regionM = value['region']
+
+        # Calculate the AB position for the monster
+        monster = calculate_ab(regionM, xM, yM, 0, aM, bM, axM, byM, x2M, y2M, False, None)
+
+        # Check if the monster is in proximity to the character
+        condition1CheckaNpc = monster.a in [char.a - 1, char.a, char.a + 1]
+        condition2CheckbNpc = monster.b in [char.b - 1, char.b, char.b + 1]
+
+        if condition1CheckaNpc and condition2CheckbNpc:
+            left = calculate_position(monster.a, char.a, monster.b, char.b, monster.ax, monster.by, True, posLeft)
+            bottom = calculate_position(monster.a, char.a, monster.b, char.b, monster.ax, monster.by, False, posTop)
+
+            # Append the position and the path of the monster image
+            monster_entry = {                
+                'left': left,
+                'bottom': bottom,
+                "image": monsterImage
+               }
+            monstersPositions.append(monster_entry)
+
+    #ppl calculate
+    for key, value in ppl.items():
+        regionPpl = int(value.get('Region ID', 0))
+        xPpl = float(value['posx'])
+        yPpl = float(value['posy'])
+
+        # Adjust region if necessary
+        if regionPpl > 32767:
+            regionPpl -= 65536
+
+        # Calculate the AB position for the other player
+        otherP = calculate_ab(regionPpl, xPpl, yPpl, 0, aPpl, bPpl, axPpl, byPpl, x2Ppl, y2Ppl, True, None)
+
+        # Check proximity conditions
+        condition1CheckaNpc = otherP.a in [char.a - 1, char.a, char.a + 1]
+        condition2CheckbNpc = otherP.b in [char.b - 1, char.b, char.b + 1]
+
+        if condition1CheckaNpc and condition2CheckbNpc:
+            left = calculate_position(otherP.a, char.a, otherP.b, char.b, otherP.ax, otherP.by, True, posLeft)
+            bottom = calculate_position(otherP.a, char.a, otherP.b, char.b, otherP.ax, otherP.by, False, posTop)
+
+            # Append the calculated positions along with the image path
+            ppl_entry = {
+                'left': left,
+                'bottom':bottom,
+                'image': pplImage
+
+            }
+            pplPositions.append(ppl_entry)
+
+    #npc calculate
+    for r in regionCombinations:
+        
+        if str(r) in map_npcos.npcPos:
+            print(str(r) + "found")
+            npcs_in_region = map_npcos.npcPos[str(r)]
+
+            for npc in npcs_in_region:
+                
+                x_npc = float(npc['x'])
+                y_npc = float(npc['y'])
+                z_npc = float(npc['z'])
+                npc_region = int(npc['region'])
+                a_npc = b_npc = int(0)
+                x2_npc = y2_npc = ax_npc = by_npc = float(0)
+                
+                # Assume calculate_ab and calculate_position are defined functions
+                vendor = calculate_ab(npc_region, x_npc, y_npc, z_npc, a_npc, b_npc, ax_npc, by_npc, x2_npc, y2_npc, True, prefix = None)
+
+                condition1CheckaNpc = vendor.a in [char.a - 1, char.a, char.a + 1]
+                condition2CheckbNpc = vendor.b in [char.b - 1, char.b, char.b + 1]
+                
+                if condition1CheckaNpc and condition2CheckbNpc:
+                    left = calculate_position(vendor.a, char.a, vendor.b, char.b, vendor.ax, vendor.by, True, posLeft)
+                    bottom = calculate_position(vendor.a, char.a, vendor.b, char.b, vendor.ax, vendor.by, False, posTop)
+                    
+                    npc_entry = {
+                        'left': left,
+                        'bottom': bottom,
+                        "image": npcImage,
+                    }
+                    npcPositions.append(npc_entry)
+                    print(npcPositions)
+    #tp calculate
+    for r in regionCombinations:
+        
+        if str(r) in map_tps_pos.tpsPos: 
+           
+            tps_in_region = map_tps_pos.tpsPos[str(r)]
+            
+            for tp in tps_in_region:
+                x_tp = float(tp['x'])
+                y_tp = float(tp['y'])
+                z_tp = float(tp['z'])
+                tp_region = int(tp['region'])
+                type = int(tp['type'])
+                
+                a_tp = b_tp = x2_tp = y2_tp = ax_tp = by_tp = 0  # Initialize to default values
+
+                # Calculate the AB position for the teleport
+                tport = calculate_ab(tp_region, x_tp, y_tp, z_tp, a_tp, b_tp, ax_tp, by_tp, x2_tp, y2_tp, True, prefix = None)
+
+                # Check proximity conditions
+                condition1_check_tp = tport.a in [char.a - 1, char.a, char.a + 1]
+                condition2_check_tp = tport.b in [char.b - 1, char.b, char.b + 1]
+                
+                if condition1_check_tp and condition2_check_tp:
+                   
+                    left = calculate_position(tport.a, char.a, tport.b, char.b, tport.ax, tport.by, True, posLeft) - 8.5
+                    bottom = calculate_position(tport.a, char.a, tport.b, char.b, tport.ax, tport.by, False, posTop) - 8.5
+
+                    pathTp = get_icon_path(type)  # Assuming a function to determine path from type
+                   
+                    teleport_entry = {
+                        'left': left,
+                        'bottom': bottom,
+                        'image':pathTp
+                    }
+                    tpsPositions.append(teleport_entry)
+                    print(tpsPositions)
+
+
+    #char position
+    left = posLeft[1][1] + (char.ax * posLeft[1][1])
+    bottom = posTop[1][1] + (char.by * posTop[1][1])
+    
+    charPosition.append({
+        'left':left,
+        'bottom': bottom,
+        'image': charImage
+    })
+    # Include more calculations as needed
+    return {
+       
+        "npcPos": npcPositions, 
+            "tpsPos": tpsPositions,
+            "mobPos": monstersPositions,
+            "ptPos": ptPositions,
+            "pplPos": pplPositions,
+            "trPos": trainingPosition,
+            "charPos": charPosition,
+            "regionName": region_name,
+            "images": images,
+            "animationD": animation_duration,
+            "offsetX": offsetX,
+            "offsetY": offsetY,
+            "rotationAngle": rotationAngle,
+            'defaultImage': defaultImage,
+         
+    }
+
+
+
+def map_engine(character_name, server_name, width):
+    # Construct the key from character_name and server_name
+    key = f"{character_name}/{server_name}"
+    
+    # Access the data directly using the constructed key
+    character_data = statz_data.get(key)
+    
+    # Check if we have data for the given key
+    if character_data:
+        job_name = character_data['job_name']
+        result = calculate_map_data(character_name, job_name, server_name, character_data, width)
+        return result
+    else:
+        # Return an empty dictionary if no data found for the key
+        return {}
+
+
+
+
+
+
+
+
+
+
+def generate_regions_from_ab_combinations(grid_a, grid_b,region_value):
+    """
+    Generates a list of unique region codes based on combinations of values from grid_a and grid_b.
+    The combination is done by shifting values from grid_b by 8 bits and merging with values from grid_a.
+    The result is adjusted to ensure it fits within a 16-bit signed integer range.
+
+    Args:
+        grid_a (List[List[int]]): Grid of values for 'A' combinations, representing lower 8 bits.
+        grid_b (List[List[int]]): Grid of values for 'B' combinations, representing upper 8 bits.
+
+    Returns:
+        List[int]: A list of unique region codes.
+    """
+    regions = set()  # Using set for better performance in membership testing
+
+    for i in range(len(grid_a)):
+        for j in range(len(grid_a[i])):
+            # Convert floats to integers if necessary
+            a_value = int(grid_a[i][j])
+            b_value = int(grid_b[i][j])
+
+            region = (b_value << 8) | a_value
+
+            # Adjust if the value exceeds the max positive value for a 16-bit signed integer.
+            if region > 32767:
+                region = region_value - 65536  # Ensures values wrap within signed 16-bit range
+
+            regions.add(region)
+
+    return list(regions)  # Convert set
+
+
+
+
+
+def determine_direction(prev_ax, prev_by, current_ax, current_by, prev_a, prev_b, current_a, current_b):
+    """
+    Determines the direction of movement or if the image has changed.
+
+    Args:
+    prev_ax (float or None): Previous x-coordinate.
+    prev_by (float or None): Previous y-coordinate.
+    current_ax (float): Current x-coordinate.
+    current_by (float): Current y-coordinate.
+    prev_a (int or None): Previous A index.
+    prev_b (int or None): Previous B index.
+    current_a (int): Current A index.
+    current_b (int): Current B index.
+
+    Returns:
+    str or float: Descriptive string or angle in radians.
+    """
+    # Check if the image has changed
+    if str(prev_a) != str(current_a) or str(prev_b) != str(current_b):
+       
+        return 'Image Changed'
+
+    print(f"current_ax: {current_ax}, prev_ax: {prev_ax}")
+    print(f"current_by: {current_by}, prev_by: {prev_by}")
+
+    delta_x = float((current_ax - prev_ax if prev_ax is not None else 0.0))
+    delta_y = float((current_by - prev_by if prev_by is not None else 0.0))
+
+    print(f"delta_x: {delta_x}, delta_y: {delta_y}")
+    # If no movement
+    if delta_x == 0.0 and delta_y == 0.0:
+        print("prevA" + str(prev_a))
+        print("-ax" + str(current_ax - prev_ax))
+        print("prevB" + str(prev_b))
+        print("-by" + str(current_by - prev_by))
+        return 'No Direction'
+
+    # Calculate angle in degrees, then convert to radians
+    angle_deg = float(atan2(-delta_y, delta_x) * (180 / pi))
+    print("ANGLE" + str(float(angle_deg * (pi / 180))))
+    return float(angle_deg * (pi / 180))
+
+
+
+
+
+def position_values_a2(a):
+    return [[a - 2, a - 1, a, a + 1, a + 2] for _ in range(5)]
+
+def position_values_b2(b):
+    return [[b + i] * 5 for i in range(2, -3, -1)]
+
+def position_values_a(a):
+    return [[a - 1, a, a + 1] for _ in range(3)]
+
+def position_values_b(b):
+    return [[b + 1] * 3, [b] * 3, [b - 1] * 3]
+
+def positions_left(width):
+    half_width = width / 2
+    return [
+        [0.0, half_width, width],
+        [0.0, half_width, width],
+        [0.0, half_width, width]
+    ]
+
+def positions_top(width):
+    half_width = width / 2
+    return [
+        [0.0, 0.0, 0.0],
+        [half_width, half_width, half_width],
+        [width, width, width]
+    ]
+
+
+
+
+
+
+
+
+
+
+
+def path_finder(region):
+    """Determines the path to image resources based on the region ID."""
+    base_path = 'lib/images/minimap/'  # Corrected relative path from app/utils/
+    if region >= 0:
+        return base_path  # Non-dungeon path
+    else:
+        return base_path + 'd/'  # Dungeon path
+    
+
+
+def get_icon_path(type):
+    # Define the base path where all images are stored
+    base_path = 'lib/images/'
+
+    if type == 1:  # fortress
+        return base_path + 'fort_worldmap.png'
+    elif type == 2:  # gate of ress
+        return base_path + 'strut_revival_gate.png'
+    elif type == 3:  # gate of glory
+        return base_path + 'strut_glory_gate.png'
+    elif type == 4:  # fortress small
+        return base_path + 'fort_small_worldmap.png'
+    elif type == 5:  # ground teleport
+        return base_path + 'map_world_icontel.png'
+    elif type == 6:  # tahomet
+        return base_path + 'tahomet_gate.png'
+    else:  # gate or any other type
+        return base_path + 'xy_gate.png'
+
+
+
+def calculate_position(a1, a2, b1, b2, aX, bY, calculate_left, positions):
+    position = 0.0
+
+    condition2_check_a = a1 == a2 or a1 == a2 + 1 or a1 == a2 - 1
+    condition3_check_b = b1 == b2 or b1 == b2 + 1 or b1 == b2 - 1
+
+    if condition2_check_a and condition3_check_b:
+        if a1 == a2 and b1 == b2:
+            # Central position
+            if calculate_left:
+                position = positions[1][1] + (aX * positions[1][1])
+            else:
+                position = positions[1][1] + (bY * positions[1][1])
+        elif a1 == a2 + 1 and b1 == b2 - 1:
+            # Bottom-Right
+            if calculate_left:
+                position = positions[0][2] + (aX * positions[1][1])
+            else:
+                position = positions[0][2] + (bY * positions[1][1])
+        elif a1 == a2 + 1 and b1 == b2:
+            # Right
+            if calculate_left:
+                position = positions[1][2] + (aX * positions[1][1])
+            else:
+                position = positions[1][2] + (bY * positions[1][1])
+        elif a1 == a2 + 1 and b1 == b2 + 1:
+            # Top-Right
+            if calculate_left:
+                position = positions[2][2] + (aX * positions[1][1])
+            else:
+                position = positions[2][2] + (bY * positions[1][1])
+        elif a1 == a2 and b1 == b2 + 1:
+            # Top
+            if calculate_left:
+                position = positions[2][1] + (aX * positions[1][1])
+            else:
+                position = positions[2][1] + (bY * positions[1][1])
+        elif a1 == a2 - 1 and b1 == b2 + 1:
+            # Top-Left
+            if calculate_left:
+                position = positions[2][0] + (aX * positions[1][1])
+            else:
+                position = positions[2][0] + (bY * positions[1][1])
+        elif a1 == a2 - 1 and b1 == b2:
+            # Left
+            if calculate_left:
+                position = positions[1][0] + (aX * positions[1][1])
+            else:
+                position = positions[1][0] + (bY * positions[1][1])
+        elif a1 == a2 - 1 and b1 == b2 - 1:
+            # Bottom-Left
+            if calculate_left:
+                position = positions[0][0] + (aX * positions[1][1])
+            else:
+                position = positions[0][0] + (bY * positions[1][1])
+        elif a1 == a2 and b1 == b2 - 1:
+            # Bottom
+            if calculate_left:
+                position = positions[0][1] + (aX * positions[1][1])
+            else:
+                position = positions[0][1] + (bY * positions[1][1])
+
+    return position
+
+
+
+
+
+class CalculationResult:
+    def __init__(self, region, a, b, x, y, z, ax, by, x2, y2, prefix):
+        self.region = region
+        self.a = a
+        self.b = b
+        self.x = x
+        self.y = y
+        self.z = z
+        self.ax = ax
+        self.by = by
+        self.x2 = x2
+        self.y2 = y2
+        self.prefix = prefix
+
+def calculate_ab(region, x, y, z, a, b, ax, by, x2, y2, npc, prefix):
+    if region >= 0:
+        if npc:
+            
+            a = region_to_a_nd(region)
+            b = region_to_b_nd(region)
+            ax = get_npc_ax_nd(x)
+            by = get_npc_ay_nd(y)
+        else:
+            a = get_A_ND(x)
+            b = get_B_ND(y)
+            ax = get_aX_ND(x)
+            by = get_bY_ND(y)
+    else:
+        region += 65536
+        if npc:
+            a = get_A_D(x)
+            b = get_B_D(y)
+            ax = get_aX_D(x)
+            by = get_bY_D(y)
+        else:
+            x2 = getNew_X(x, region)
+            y2 = getNew_Y(y, region)
+            a = get_A_D(x2)
+            b = get_B_D(y2)
+            ax = get_aX_D(x2)
+            by = get_bY_D(y2)
+
+        if region == 32769 and prefix is not None:
+            if z <= 115:
+                region = 327691
+            elif z < 230:
+                region = 327692
+            elif z < 345:
+                region = 327693
+            else:
+                region = 327694
+       
+        
+        if prefix is not None and prefix == '' and region in map_map_layers.regionImagePrefixes:
+           
+            prefixes = map_map_layers.regionImagePrefixes[region]
+            for candidate_prefix in prefixes:
+                print(candidate_prefix)
+                if try_load_images(candidate_prefix, a, b):
+                    prefix = candidate_prefix
+                    print(f"Loaded images with prefix: {prefix}")
+                    break
+
+    return CalculationResult(region, a, b, x, y, z, ax, by, x2, y2, prefix)
+
+def try_load_images(prefix, a, b):
+    # Construct the image dimension key as a string
+    axb_value = f"{int(a)}x{int(b)}"
+    # Removing the last underscore only if it exists and is the last character
+    if prefix.endswith('_'):
+        modified_prefix = prefix[:-1]
+    else:
+        modified_prefix = prefix
+    # Check if the prefix exists and the specific dimension is included
+    return modified_prefix in map_dungeon.imagesMapD and axb_value in map_dungeon.imagesMapD[modified_prefix]
+
+
+
+def isInTrainingArea(characterPosition, trainingArea):
+    if not characterPosition or not trainingArea:
+        return False
+
+    radius = trainingArea['radius']
+
+    if characterPosition['region'] == trainingArea['region']:
+        if characterPosition['region'] >= 0:
+            # For non-dungeon
+            charAX = get_aX_ND(characterPosition['x'])
+            charBY = get_bY_ND(characterPosition['y'])
+            charA = get_A_ND(characterPosition['x'])
+            charB = get_B_ND(characterPosition['y'])
+
+            trainingAX = get_aX_ND(trainingArea['x'])
+            trainingBY = get_bY_ND(trainingArea['y'])
+            trainingA = get_A_ND(trainingArea['x'])
+            trainingB = get_B_ND(trainingArea['y'])
+
+            return (charA == trainingA and
+                    charB == trainingB and
+                    abs(charAX - trainingAX) <= radius and
+                    abs(charBY - trainingBY) <= radius)
+
+        else:
+            # For dungeon
+            charX2 = getNew_X(characterPosition['x'], characterPosition['region'])
+            charY2 = getNew_Y(characterPosition['y'], characterPosition['region'])
+            charAX = get_aX_D(charX2)
+            charBY = get_bY_D(charY2)
+            charA = get_A_D(charX2)
+            charB = get_B_D(charY2)
+
+            trainingX2 = getNew_X(trainingArea['x'], trainingArea['region'])
+            trainingY2 = getNew_Y(trainingArea['y'], trainingArea['region'])
+            trainingAX = get_aX_D(trainingX2)
+            trainingBY = get_bY_D(trainingY2)
+            trainingA = get_A_D(trainingX2)
+            trainingB = get_B_D(trainingY2)
+
+            return (charA == trainingA and
+                    charB == trainingB and
+                    abs(charAX - trainingAX) <= radius/200 and
+                    abs(charBY - trainingBY) <= radius/200)
+    
+    return False
+
+
+
+def region_to_a_nd(region):
+    """Extract the 'A' value from the region code by applying a bitwise AND to get the lowest byte."""
+    return region & 0xFF
+
+def region_to_b_nd(region):
+    """Extract the 'B' value from the region code by shifting right by 8 bits to move the second lowest byte to the lowest byte position."""
+    return region >> 8
+
+def get_npc_ax_nd(x):
+    """Calculate the NPC 'aX' value for Non-Dungeon based on the given x-coordinate."""
+    return (256 / 1920 * x) / 256 - 0.015
+
+def get_npc_ay_nd(y):
+    """Calculate the NPC 'bY' value for Non-Dungeon based on the given y-coordinate."""
+    return (256 / 1920 * y) / 256 - 0.04
+
+
+# GET A NON DUNGEON
+def get_A_ND(x):
+    return int(x / 192 + 135)
+
+# GET B NON DUNGEON
+def get_B_ND(y):
+    return int(y / 192 + 92)
+
+# GET A DUNGEON
+def get_A_D(x):
+    return (128 * 192 + x / 10) // 192
+
+# GET B DUNGEON
+def get_B_D(y):
+    return (128 * 192 + y / 10) // 192
+
+# GET aX NON DUNGEON
+def get_aX_ND(x):
+    return (x / 192 + 135) - (x / 192 + 135) // 1 - 0.015
+
+# GET bY NON DUNGEON
+def get_bY_ND(y):
+    return (y / 192 + 92) - (y / 192 + 92) // 1 - 0.04
+
+# GET aX DUNGEON
+def get_aX_D(x):
+    value = (128 * 192 + x / 10) / 192
+    return value - value // 1 - 0.015
+
+# GET bY DUNGEON
+def get_bY_D(y):
+    value = (128 * 192 + y / 10) / 192
+    return value - value // 1 - 0.04
+
+# GET newX
+def getNew_X(x, region):
+    return 10 * (x - ((region & 255) - 128) * 192)
+
+# GET newY
+def getNew_Y(y, region):
+    return 10 * (y - ((region >> 8) - 128) * 192)
+
+
+
+
+@socketio.on('map')
+def handle_map_data(payload):
+    print(f"Received map_data from")  # Log the socket ID
+    print(payload)  # Debug print the received payload
+
+    character_name = payload['character']
+    print(character_name)
+    server_name = payload['server']
+    width = payload['width']
+    print(width)
+    result = map_engine(character_name, server_name, width)
+    socketio.emit('map_data',result)
+    print('emitted')
 
 
 
@@ -730,7 +1587,7 @@ def run_gui():
     window.mainloop()
 
 def start_server():
-    print("Waiting for gui_done event.")
+    print("from start_server: Waiting for gui_done event.")
     """Starts the Flask and SocketIO server after GUI is done."""
     gui_done.wait()  # Wait for the GUI to finish
     print("gui_done event received, starting server.")
@@ -798,7 +1655,4 @@ def disconnect_request():
 #             return f"Error saving message: {str(e)}"
 #     else:
 #         return "No message received"
-
-
-
 

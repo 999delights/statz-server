@@ -1,17 +1,7 @@
 
-import os
-from threading import Thread, Event
-import tkinter as tk
-from tkinter import filedialog
-import eventlet
-eventlet.monkey_patch()
-from datetime import datetime
-from turtle import speed
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit, disconnect
-import json
-from .. import app, socketio
-from ..utils import config
+
+from .. import socketio
+from ..utils import var
 
 
 
@@ -20,7 +10,7 @@ socketio.on('fetch_STATZ')
 def handle_fetch_characters():
    
 
-    local_statz_data = config.statz_data.copy()  # Create a local copy of statz_data
+    local_statz_data = var.statz_data.copy()  # Create a local copy of statz_data
     info_data = {}  # Initialize a local dictionary for the merged data
 
     # Copy only keys from statz_data to info_data where the manager data is true
@@ -41,10 +31,10 @@ def handle_fetch_events():
 
    
 
-    if config.events_sent == False:
+    if var.events_sent == False:
                 # Emit the events data via socket
-        socketio.emit('characters_events', config.events_data)
-        config.events_sent = True
+        socketio.emit('characters_events', var.events_data)
+        var.events_sent = True
 
     else:
         # Emit an error message if no data is available
@@ -56,9 +46,9 @@ def handle_fetch_events():
 
 socketio.on('fetch_CHAT')
 def handle_fetch_chat():
-    if config.new_chat_saved:
-        socketio.emit('characters_chat', config.chat_data)  # Emit latest_messages to the client
-        config.new_chat_saved = False  # Reset new_messages_saved to False
+    if var.new_chat_saved:
+        socketio.emit('characters_chat', var.chat_data)  # Emit latest_messages to the client
+        var.new_chat_saved = False  # Reset new_messages_saved to False
     else:
         socketio.emit('characters_error', 'No new messages available yet.')
 
@@ -67,9 +57,9 @@ def handle_fetch_speed():
 
     
 
-    if not config.speed_pause and config.speed_data:
+    if not var.speed_pause and var.speed_data:
                 # Emit the events data via socket
-        socketio.emit('characters_speed', config.speed_data)
+        socketio.emit('characters_speed', var.speed_data)
     else:
         # Emit an error message if no data is available
         socketio.emit('speed_error', 'No data available yet.')

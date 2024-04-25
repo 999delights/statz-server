@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, disconnect
 import json
 import time
-from ..utils import config
+from ..utils import var
 from datetime import datetime, timedelta
 
 # Function to parse datetime from filename
@@ -39,8 +39,8 @@ def process_events():
     threshold_date = calculate_threshold_date()
     files_to_delete = []
 
-    for server in os.listdir(config.events_path):
-        server_dir = os.path.join(config.events_path, server)
+    for server in os.listdir(var.events_path):
+        server_dir = os.path.join(var.events_path, server)
         for character in os.listdir(server_dir):
             character_dir = os.path.join(server_dir, character)
             event_files = sorted(os.listdir(character_dir))
@@ -58,7 +58,7 @@ def process_events():
                         with open(file_path, 'r', encoding='utf-8') as file:
                             data = json.load(file)
                             for event_key, event_data in data.items():
-                                config.events_data.setdefault(event_key, []).append(event_data)
+                                var.events_data.setdefault(event_key, []).append(event_data)
                     except Exception as e:
                         print(f"Error processing file {file_path}: {e}")
 
@@ -73,7 +73,7 @@ def process_events():
     print("Event processing complete.")
 
     # Save the extracted data to events.json once after processing all events
-    output_file_path = os.path.join(config.info_path, 'events.json')  # Ensure info_path is correctly defined
+    output_file_path = os.path.join(var.info_path, 'events.json')  # Ensure info_path is correctly defined
     with open(output_file_path, 'w', encoding='utf-8') as output_file:
-        json.dump(config.events_data, output_file, indent=4)
+        json.dump(var.events_data, output_file, indent=4)
     print("Events data saved.")
